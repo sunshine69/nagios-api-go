@@ -14,8 +14,6 @@ var GetServiceStatus = func(w http.ResponseWriter, r *http.Request) {
 	serviceName := vars["service_name"]
 	nagiosHost := vars["nagios_host"]
 	serviceStatus := app.GetServiceStatus(nagiosHost, serviceName)
-	// output, err := json.MarshalIndent(serviceStatus, "", "    ")
-	// log.Printf("%v", serviceStatus)
 	je := json.NewEncoder(w)
 	je.SetIndent("", "    ")
 	je.Encode(serviceStatus)

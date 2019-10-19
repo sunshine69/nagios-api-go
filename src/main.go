@@ -9,12 +9,8 @@ import (
 )
 
 func main() {
-	// configFile := flag.String("c","","Config file to load")
-	// flag.Parse()
-
 	router := mux.NewRouter()
 
-	//main file just map url path to the methods in controllers
 	router.HandleFunc("/{nagios_host}/service/{service_name}", controllers.GetServiceStatus).Methods("GET")
 
 	// router.Use(app.JwtAuthentication) //attach JWT auth middleware
