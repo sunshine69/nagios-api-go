@@ -9,8 +9,8 @@ import (
 	"../conf"
 )
 
-//NewNagios - Parse the status file and populate the data structure
-func NewNagios(nagiosStatusFilePath string) map[string]map[string]map[string]string {
+//NewNagiosData - Parse the status file and populate the data structure. map<nagios_type><uniq_key_to_lookup><key:val>
+func NewNagiosData(nagiosStatusFilePath string) map[string]map[string]map[string]string {
 	var output = make(map[string]map[string]map[string]string, 0)
 	var curTokenStack []string
 	//When we did not the unique key, we store info into this
@@ -22,20 +22,25 @@ func NewNagios(nagiosStatusFilePath string) map[string]map[string]map[string]str
 		"servicestatus": {"host_name":false, "service_description":false},
 	}
 	var foundUniqKey = false
+	var ignoreBlock = false
 
 	processLines := func(line string) {
 		line = strings.TrimSpace(line)
-		if line == "" { return }
+		if line == "" || strings.Contains(line, "#") { return }
 		// fmt.Printf("Line content: '%s'\n", line)
 		if strings.HasSuffix(line, "{") {
 			token := strings.Split(line, " ")
+			if _, ok := uniqKeyTypeLookup[token[0]]; !ok {
+				ignoreBlock = true
+				return
+			}
 			// fmt.Printf("Beginning block: '%s'\n", token[0])
 			if _, ok := output[token[0]]; ! ok {
 				output[token[0]] = make(map[string]map[string]string, 0)
 			}
 			curTokenStack = append(curTokenStack, token[0])
 
-		} else if strings.Contains(line, "=") {//We are in the middle of block
+		} else if strings.Contains(line, "=") && ! ignoreBlock {//We are in the middle of block
 			// fmt.Printf("Middle block: '%s'\n", line)
 			token := strings.Split(line, "=")
 			//Always Populate tempMapStack for the current block
@@ -70,13 +75,15 @@ func NewNagios(nagiosStatusFilePath string) map[string]map[string]map[string]str
 				}
 			}
 		} else if line == "}" {// Closing block
-			// fmt.Printf("Closing stack for %s\n    tempMap: %v\ncurTokenStak: %v\nfoundUniqKey: %v\nuniqKey: %v\n", curTokenStack[0], tempMapStack, curTokenStack, foundUniqKey, uniqKey)
-			switch curTokenStack[0] {
-				case "hoststatus":
-					output[curTokenStack[0]][uniqKey["host_name"]] = tempMapStack[0]
-				case "servicestatus":
-					_key := fmt.Sprintf("%s-%s", uniqKey["host_name"], uniqKey["service_description"])
-					output[curTokenStack[0]][_key] = tempMapStack[0]
+			if ! ignoreBlock {
+				// fmt.Printf("Closing stack for %s\n    tempMap: %v\ncurTokenStak: %v\nfoundUniqKey: %v\nuniqKey: %v\n", curTokenStack[0], tempMapStack, curTokenStack, foundUniqKey, uniqKey)
+				switch curTokenStack[0] {
+					case "hoststatus":
+						output[curTokenStack[0]][uniqKey["host_name"]] = tempMapStack[0]
+					case "servicestatus":
+						_key := fmt.Sprintf("%s-%s", uniqKey["host_name"], uniqKey["service_description"])
+						output[curTokenStack[0]][_key] = tempMapStack[0]
+				}
 			}
 			// fmt.Printf("output now is: %v\n", output)
 			//Reset state
@@ -84,6 +91,7 @@ func NewNagios(nagiosStatusFilePath string) map[string]map[string]map[string]str
 			curTokenStack = curTokenStack[:0]
 			foundUniqKey = false
 			uniqKey = make(map[string]string)
+			ignoreBlock = false
 		}
 	}
 
@@ -106,7 +114,7 @@ func NewNagios(nagiosStatusFilePath string) map[string]map[string]map[string]str
 
 // GetServiceStatus - Get service status
 func GetServiceStatus(nagiosHost, serviceName string) map[string]string {
-	n := NewNagios(conf.Config.NagiosStatusFilePath)
+	n := NewNagiosData(conf.Config.NagiosStatusFilePath)
 	_key := fmt.Sprintf("%s-%s", nagiosHost, serviceName)
 	return n["servicestatus"][_key]
 }
