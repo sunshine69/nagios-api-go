@@ -1,7 +1,7 @@
 package app
 
 import (
-	"strconv"
+	"fmt"
 	"bufio"
 	"log"
 	"os"
@@ -9,70 +9,19 @@ import (
 	"../conf"
 )
 
-
-//ServiceStatus - nagios ServiceStatus data structure. We only care about what we want for now
-type ServiceStatus struct {
-	Host_name string
-	Service_description string
-	Current_state int8
-	Plugin_output string
-	Long_plugin_output string
-	Performance_data string
-	Process_performance_data int8
-	Is_flapping int8
-}
-
-//HostStatus - nagios hoststatus
-type HostStatus struct {
-	Host_name string
-	Current_state int8
-	Performance_data string
-	Plugin_output string
-	Long_plugin_output string
-	Process_performance_data int8
-}
-
-//ServiceDowntime - nagios ServiceDowntime
-type ServiceDowntime struct {
-    Host_name string
-    Service_description string
-    downtime_id int
-    comment_id int
-    entry_time int64
-    start_time int64
-    flex_downtime_start int8
-    end_time int64
-    triggered_by int8
-    fixed int8
-    duration int16
-    is_in_effect int8
-    start_notification_sent int8
-    comment string
-}
-
-//Nagios - Hold current state of the server
-type Nagios struct {
-	ServiceStatus []ServiceStatus
-	HostStatus []HostStatus
-	ServiceDowntime []ServiceDowntime
-}
-
-func parseInt(s string) int {
-	o, e := strconv.Atoi(s)
-	if e != nil {
-		log.Printf("Can not parse %s", s)
-		panic("parseInt")
-	}
-	return o
-}
-
 //NewNagios - Parse the status file and populate the data structure
-func NewNagios(nagiosStatusFilePath string) Nagios {
-	var output Nagios
+func NewNagios(nagiosStatusFilePath string) map[string]map[string]map[string]string {
+	var output = make(map[string]map[string]map[string]string, 0)
 	var curTokenStack []string
-	var curServiceStatusStack []ServiceStatus
-	var curHostStatusStack []HostStatus
-	var curServiceDowntimeStack []ServiceDowntime
+	//When we did not the unique key, we store info into this
+	var tempMapStack []map[string]string
+	//Part of unique key
+	var uniqKey map[string]string
+	var uniqKeyTypeLookup = map[string]map[string]bool {
+		"hoststatus": {"host_name":false},
+		"servicestatus": {"host_name":false, "service_description":false},
+	}
+	var foundUniqKey = false
 
 	processLines := func(line string) {
 		line = strings.TrimSpace(line)
@@ -80,83 +29,61 @@ func NewNagios(nagiosStatusFilePath string) Nagios {
 		// fmt.Printf("Line content: '%s'\n", line)
 		if strings.HasSuffix(line, "{") {
 			token := strings.Split(line, " ")
-			// fmt.Printf("1 curTokenStack: %v\n", curTokenStack)
-			// fmt.Printf("2 token: %v\n", token)
-			if len(curTokenStack) > 0 {//Push the previous obect and clear things out
-				// fmt.Printf("2 %v", curTokenStack)
-				switch curTokenStack[0] {
-					case "hoststatus":
-						output.HostStatus = append(output.HostStatus, curHostStatusStack[0])
-						curHostStatusStack = nil
-					case "servicestatus":
-						output.ServiceStatus = append(output.ServiceStatus, curServiceStatusStack[0])
-						curServiceStatusStack = nil
-					case "servicedowntime":
-						output.ServiceDowntime = append(output.ServiceDowntime, curServiceDowntimeStack[0])
-						curServiceDowntimeStack = nil
-				}
-				curTokenStack = nil
+			// fmt.Printf("Beginning block: '%s'\n", token[0])
+			if _, ok := output[token[0]]; ! ok {
+				output[token[0]] = make(map[string]map[string]string, 0)
 			}
-			//Add new token holding the current one
-			switch token[0] {
-				case "hoststatus", "servicestatus", "servicedowntime":
-					curTokenStack = append(curTokenStack, token[0])
-					switch token[0] {
-					case "hoststatus":
-						curHostStatusStack = append(curHostStatusStack, HostStatus{})
-					case "servicestatus":
-						curServiceStatusStack = append(curServiceStatusStack, ServiceStatus{})
-					case "servicedowntime":
-						curServiceDowntimeStack = append(curServiceDowntimeStack, ServiceDowntime{})
-					}
-				default:
-					// fmt.Printf("Not supported %s\n", token[0])
-					return
-			}
-		} else if strings.Contains(line, "=") {
-			if len(curTokenStack) == 0 { return }
+			curTokenStack = append(curTokenStack, token[0])
+
+		} else if strings.Contains(line, "=") {//We are in the middle of block
+			// fmt.Printf("Middle block: '%s'\n", line)
 			token := strings.Split(line, "=")
+			//Always Populate tempMapStack for the current block
+			if len(tempMapStack) == 0 {
+				// fmt.Printf("Creating new entry in tempMapStack\n")
+				var _tempMap = map[string]string {token[0]: token[1]}
+				tempMapStack = append(tempMapStack, _tempMap)
+			} else {
+				//fmt.Printf("Update entry to tempMapStack\n")
+				tempMapStack[0][token[0]] = token[1]
+			}
+
+			//Look for unique key if found then create it in the output
+			if ! foundUniqKey {
+				if _, ok := uniqKeyTypeLookup[curTokenStack[0]][token[0]]; ok {
+					// fmt.Printf("Current token is in uniqKey map\n")
+					switch curTokenStack[0] {
+					case "hoststatus": //Found single key
+						// fmt.Printf("Going to make new unique in output\n")
+						uniqKey[token[0]] = token[1]
+						output[curTokenStack[0]][uniqKey["host_name"]] = make(map[string]string, 0)
+						foundUniqKey = true
+					case "servicestatus":
+						uniqKey[token[0]] = token[1]
+						if len(uniqKey) == 2 {
+							foundUniqKey = true
+							// fmt.Printf("Going to make new unique in output\n")
+							_key := fmt.Sprintf("%s-%s", uniqKey["host_name"], uniqKey["service_description"])
+							output[curTokenStack[0]][_key] = make(map[string]string, 0)
+						}
+					}
+				}
+			}
+		} else if line == "}" {// Closing block
+			// fmt.Printf("Closing stack for %s\n    tempMap: %v\ncurTokenStak: %v\nfoundUniqKey: %v\nuniqKey: %v\n", curTokenStack[0], tempMapStack, curTokenStack, foundUniqKey, uniqKey)
 			switch curTokenStack[0] {
 				case "hoststatus":
-					switch token[0] {
-						case "host_name":
-							curHostStatusStack[0].Host_name = token[1]
-						case "current_state":
-							curHostStatusStack[0].Current_state = int8(parseInt(token[1]))
-						case "performance_data":
-							curHostStatusStack[0].Performance_data = token[1]
-						case "plugin_output":
-							curHostStatusStack[0].Plugin_output = token[1]
-						case "long_plugin_output":
-							curHostStatusStack[0].Long_plugin_output = token[1]
-						case "process_performance_data":
-							curHostStatusStack[0].Process_performance_data = int8(parseInt(token[1]))
-						}
-
+					output[curTokenStack[0]][uniqKey["host_name"]] = tempMapStack[0]
 				case "servicestatus":
-					switch token[0] {
-						case "host_name":
-							curServiceStatusStack[0].Host_name = token[1]
-						case "service_description":
-							curServiceStatusStack[0].Service_description = token[1]
-						case "current_state":
-							_state, _ := strconv.Atoi(token[1])
-							curServiceStatusStack[0].Current_state = int8(_state)
-						case "plugin_output":
-							curServiceStatusStack[0].Plugin_output = token[1]
-						case "long_plugin_output":
-							curServiceStatusStack[0].Long_plugin_output = token[1]
-						case "performance_data":
-							curServiceStatusStack[0].Performance_data = token[1]
-						case "process_performance_data":
-							curServiceStatusStack[0].Process_performance_data = int8(parseInt(token[1]))
-						case "is_flapping":
-							curServiceStatusStack[0].Is_flapping = int8(parseInt(token[1]))
-					}
-				case "servicedowntime":
-					switch token[0] {
-					}
+					_key := fmt.Sprintf("%s-%s", uniqKey["host_name"], uniqKey["service_description"])
+					output[curTokenStack[0]][_key] = tempMapStack[0]
 			}
+			// fmt.Printf("output now is: %v\n", output)
+			//Reset state
+			tempMapStack = tempMapStack[:0]
+			curTokenStack = curTokenStack[:0]
+			foundUniqKey = false
+			uniqKey = make(map[string]string)
 		}
 	}
 
@@ -177,13 +104,9 @@ func NewNagios(nagiosStatusFilePath string) Nagios {
 	return output
 }
 
-//GetServiceStatus - Get service status
-func GetServiceStatus(nagiosHost, serviceName string) ServiceStatus {
+// GetServiceStatus - Get service status
+func GetServiceStatus(nagiosHost, serviceName string) map[string]string {
 	n := NewNagios(conf.Config.NagiosStatusFilePath)
-	for _, d := range(n.ServiceStatus) {
-		if d.Host_name == nagiosHost && d.Service_description == serviceName {
-			return d
-		}
-	}
-	return ServiceStatus{}
+	_key := fmt.Sprintf("%s-%s", nagiosHost, serviceName)
+	return n["servicestatus"][_key]
 }
