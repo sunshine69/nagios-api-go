@@ -1,4 +1,4 @@
 {
     "Port": "8000",
-    "NagiosStatusFilePath": "/tmp/nagios.txt"
+    "NagiosStatusFilePath": "/var/log/nagios/status.dat"
 }
