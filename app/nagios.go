@@ -6,7 +6,7 @@ import (
 	"log"
 	"os"
 	"strings"
-	"../conf"
+	"github.com/sunshine69/nagios-api-go/conf"
 )
 
 //NewNagiosData - Parse the status file and populate the data structure. map<nagios_type><uniq_key_to_lookup><key:val>

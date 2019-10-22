@@ -3,9 +3,9 @@ package main
 import (
 	"fmt"
 	"github.com/gorilla/mux"
-	"./controllers"
+	"github.com/sunshine69/nagios-api-go/controllers"
 	"net/http"
-	"./conf"
+	"github.com/sunshine69/nagios-api-go/conf"
 )
 
 func main() {

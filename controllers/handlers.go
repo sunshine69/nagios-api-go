@@ -1,11 +1,10 @@
 package controllers
 
 import (
-	// "log"
 	"encoding/json"
 	"net/http"
 	"github.com/gorilla/mux"
-	app "../app"
+	app "github.com/sunshine69/nagios-api-go/app"
 )
 
 //GetServiceStatus - handler
