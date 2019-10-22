@@ -9,6 +9,8 @@ import (
 type Configuration struct {
 	Port string
 	NagiosStatusFilePath string
+	LogFilePath string
+	PidFilePath string
 }
 
 //Config -

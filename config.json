@@ -1,4 +1,6 @@
 {
     "Port": "8000",
-    "NagiosStatusFilePath": "/var/log/nagios/status.dat"
+    "NagiosStatusFilePath": "/var/log/nagios/status.dat",
+    "LogFilePath": "/var/log/nagios-api.log",
+    "PidFilePath": "/run/nagios-api.pid"
 }
